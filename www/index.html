@@ -1,0 +1,133 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>Hex War — Collisions & Flip Scoring</title>
+  <link rel="stylesheet" href="styles.css"/>
+</head>
+<body>
+  <div class="container">
+
+    <!-- Scoreboard -->
+    <div class="scorebar">
+      <div class="score white">
+        <span class="pip white"></span>
+        <span class="name">White</span>
+        <span class="value" id="points-white">0</span>
+      </div>
+      <div class="midlabel">Points (flips)</div>
+      <div class="score black">
+        <span class="value" id="points-black">0</span>
+        <span class="name">Black</span>
+        <span class="pip black"></span>
+      </div>
+    </div>
+
+    <!-- Stage -->
+    <div class="stage-wrap">
+      <canvas id="stage"></canvas>
+    </div>
+
+    <!-- Controls -->
+    <div class="controls">
+      <div class="control">
+        <label for="balls">Balls per team (max 5)</label>
+        <input id="balls" type="number" min="0" max="5" step="1" value="1" />
+      </div>
+      <div class="control">
+        <label for="speed">Speed</label>
+        <input id="speed" type="range" min="0" max="6.25" step="0.05" value="1" />
+      </div>
+      <div class="control">
+        <label>&nbsp;</label>
+        <button id="toggle" class="btn primary">Start</button>
+      </div>
+      <div class="control">
+        <label>&nbsp;</label>
+        <button id="reset" class="btn">Reset</button>
+      </div>
+    </div>
+
+    <div class="muted">
+      Aspect auto: <strong>9:16</strong> on small screens • <strong>16:9</strong> on large screens • Glossy balls • Elastic collisions • Flip scoring
+    </div>
+
+  </div>
+
+  <script type="module">
+    import init, * as wasm from "../pkg/hex_war.js";
+
+    const canvas   = document.getElementById("stage");
+    const ballsEl  = document.getElementById("balls");
+    const speedEl  = document.getElementById("speed");
+    const toggle   = document.getElementById("toggle");
+    const resetBtn = document.getElementById("reset");
+
+    let running = false;
+
+    function desiredAspect() {
+      // Small screens => 9:16, otherwise 16:9
+      return window.matchMedia("(max-width: 720px)").matches ? [9, 16] : [16, 9];
+    }
+
+    function fitCanvas() {
+      const [aw, ah] = desiredAspect();
+      const ratio = ah / aw;
+      const cssW = canvas.parentElement.clientWidth;
+      const cssH = Math.floor(cssW * ratio);
+      canvas.style.height = cssH + "px";
+      wasm.resize(cssW, cssH);
+    }
+
+    function clampPerTeam(n) {
+      let v = Math.floor(Number(n));
+      if (!Number.isFinite(v)) v = 0;
+      if (v < 0) v = 0;
+      if (v > 5) v = 5;
+      return v;
+    }
+
+    function applyBalls() {
+      const perTeam = clampPerTeam(ballsEl.value);
+      ballsEl.value = String(perTeam);
+      wasm.set_balls_per_team(perTeam);
+    }
+
+    async function boot() {
+      await init();
+
+      fitCanvas();
+      window.addEventListener("resize", fitCanvas);
+
+      const cssW = canvas.clientWidth, cssH = canvas.clientHeight;
+      const perTeam = clampPerTeam(ballsEl.value);
+      const speed = Math.max(0, Math.min(6.25, parseFloat(speedEl.value) || 1));
+
+      ballsEl.value = String(perTeam); // default: 1 ball per team
+      await wasm.init_app("stage", cssW, cssH, perTeam, speed);
+
+      ballsEl.addEventListener("input", applyBalls);
+      ballsEl.addEventListener("change", applyBalls);
+
+      speedEl.addEventListener("input", () => {
+        const s = Math.max(0, Math.min(6.25, parseFloat(speedEl.value) || 1));
+        wasm.set_speed(s);
+      });
+
+      toggle.addEventListener("click", async () => {
+        if (!running) {
+          try { await wasm.start(); running = true; toggle.textContent = "Stop"; toggle.classList.remove("primary"); toggle.classList.add("stop"); }
+          catch (e) { console.error(e); }
+        } else {
+          wasm.stop(); running = false; toggle.textContent = "Start"; toggle.classList.add("primary"); toggle.classList.remove("stop");
+        }
+      });
+
+      resetBtn.addEventListener("click", () => wasm.reset_grid());
+    }
+
+    boot().catch(e => { console.error(e); alert("Init error (see console)."); });
+  </script>
+</body>
+</html>
